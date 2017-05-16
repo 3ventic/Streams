@@ -40,9 +40,11 @@ namespace Streams
             client.MessageReceived += Client_MessageReceived;
             client.GuildAvailable += Client_GuildAvailable;
 
-            await client.LoginAsync(Discord.TokenType.Bot, token);
+            Console.WriteLine("Connecting...");
+            await client.LoginAsync(TokenType.Bot, token);
             await client.StartAsync();
 
+            Console.WriteLine("Starting update loop");
             streamlooker = new Timer(UpdateStreams, null, 1000, 600000);
 
             try
