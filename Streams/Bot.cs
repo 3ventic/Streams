@@ -251,7 +251,7 @@ namespace Streams
                 Title = stream.Channel.Status,
                 Url = stream.Channel.Url,
                 Timestamp = DateTimeOffset.Now,
-                ImageUrl = stream.Previews["large"],
+                ImageUrl = stream.Previews["large"] + $"?{DateTime.Now.Ticks}",
                 Footer = footer
             }.AddField("Category", stream.Game).AddInlineField("Viewers", stream.Viewers).AddInlineField("Uptime", GetUptime(stream.CreatedAt));
             return eb.Build();
