@@ -41,7 +41,7 @@ namespace Streams
             client.GuildAvailable += Client_GuildAvailable;
             client.Log += msg => Task.Run(() => Console.WriteLine($"Discord.Net log: {msg}"));
 
-            Console.WriteLine("Connecting...");
+            Console.WriteLine($"Connecting using token \"{token}\"");
             await client.LoginAsync(TokenType.Bot, token, true);
             await client.StartAsync();
 
