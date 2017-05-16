@@ -46,7 +46,7 @@ namespace Streams
             await client.StartAsync();
 
             Console.WriteLine("Starting update loop");
-            streamlooker = new Timer(UpdateStreams, null, 1000, 300000);
+            streamlooker = new Timer(UpdateStreams, null, 20000, 300000);
 
             try
             {
