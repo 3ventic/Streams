@@ -19,7 +19,7 @@ namespace Streams
             File.WriteAllText("data/.wt", "3v");
 
             // Read token
-            string token = File.ReadAllText("token.txt");
+            string token = File.ReadAllText("token.txt").Trim(' ', '\r', '\n');
 
             // Handle ^C
             Console.CancelKeyPress += Console_CancelKeyPress;
