@@ -41,7 +41,7 @@ namespace Streams
             client.GuildAvailable += Client_GuildAvailable;
 
             Console.WriteLine("Connecting...");
-            await client.LoginAsync(TokenType.Bot, token);
+            await client.LoginAsync(TokenType.Bot, token, true);
             await client.StartAsync();
 
             Console.WriteLine("Starting update loop");
