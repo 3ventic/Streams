@@ -2,6 +2,8 @@
 
 A Discord bot to provide stream status and updates from multiple Twitch channels to multiple Discord channels. Messages are edited to update stream status and deleted once the stream is over.
 
+![example embed](https://i.3v.fi/raw/1494968608-9024.png)
+
 # Usage
 
 ## Invite to guild
