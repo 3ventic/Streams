@@ -13,6 +13,7 @@ namespace Streams
 {
     internal class Bot
     {
+        private static readonly DateTime startTime = DateTime.Now;
         private static readonly RequestOptions reqOpt = new RequestOptions()
         {
             RetryMode = RetryMode.RetryRatelimit
@@ -212,9 +213,49 @@ namespace Streams
                         }
                         await deleteCommand;
                         break;
+                    case "bot":
+                    case "status":
+                        EmbedBuilder eb = new EmbedBuilder()
+                        {
+                            Author = new EmbedAuthorBuilder()
+                            {
+                                IconUrl = "https://i.3v.fi/raw/3logo.png",
+                                Name = "3v",
+                                Url = "https://3v.fi/l/streams"
+                            },
+                            Title = "Bot Status"
+                        }
+                        .AddInlineField("RAM Usage (GC)", $"{(Math.Ceiling(GC.GetTotalMemory(true) / 1024.0))} KB")
+                        .AddInlineField("Uptime", (DateTime.UtcNow - startTime).ToString(@"d\ \d\a\y\s\,\ h\ \h\o\u\r\s"))
+                        .AddInlineField("Guilds", client.Guilds.Count)
+                        .AddInlineField("Users", GetUserCount())
+                        .AddInlineField("Streams Tracked", GetTrackedStreamCount())
+                        .AddInlineField("Streams Live", storedMessages.Count);
+                        await channel.SendMessageAsync("", embed: eb.Build());
+                        break;
                 }
             }
         });
+
+        private int GetTrackedStreamCount()
+        {
+            int streams = 0;
+            foreach (var tUsers in streamChannels.Values)
+            {
+                streams += tUsers.Count;
+            }
+            return streams;
+        }
+
+        private int GetUserCount()
+        {
+            int users = 0;
+            foreach (var guild in client.Guilds)
+            {
+                users += guild.MemberCount;
+            }
+            return users;
+        }
 
         private void DeleteStoredMessage(string storedMessageKey)
         {
