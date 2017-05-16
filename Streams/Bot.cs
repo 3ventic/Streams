@@ -120,7 +120,7 @@ namespace Streams
                             {
                                 try
                                 {
-                                    users = await request.GetObjectAsync<Http.Models.Twitch.UsersByLogin>($"users/?login={Uri.EscapeDataString(words[1])}");
+                                    users = await request.GetObjectAsync<Http.Models.Twitch.UsersByLogin>($"users/?limit=100&login={Uri.EscapeDataString(words[1])}");
                                 }
                                 catch (Exception ex)
                                 {
@@ -152,6 +152,12 @@ namespace Streams
                                     }
                                 }
                                 SaveChannelData(channel.Id, tUsers);
+
+                                int trackedChannels = tUsers.Count;
+                                if (trackedChannels > 100)
+                                {
+                                    await channel.SendMessageAsync($":warning: You have enabled tracking for {trackedChannels}. Behavior has not been tested when over a 100 tracked channels are live at once. Consider creating another channel to track the additional streams.");
+                                }
                             }
                             await DeleteMessage(await channel.SendMessageAsync($"Added tracking for {users.Users.Length} channels: " + string.Join(", ", (users.Users.Select(tUser => tUser.DisplayName)))));
                         }
@@ -260,7 +266,7 @@ namespace Streams
                     Http.Models.Twitch.Streams streams;
                     try
                     {
-                        streams = await request.GetObjectAsync<Http.Models.Twitch.Streams>($"streams/?channel={idlist}");
+                        streams = await request.GetObjectAsync<Http.Models.Twitch.Streams>($"streams/?limit=100&channel={idlist}");
                     }
                     catch (Exception ex)
                     {
