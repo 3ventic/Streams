@@ -100,7 +100,14 @@ namespace Streams
 
         private Task Client_Connected() => Task.Run(async () =>
         {
-            await client.SetGameAsync("Monitoring streams", "https://www.twitch.tv/directory/following/live", Discord.StreamType.Twitch);
+            try
+            {
+                await client.SetGameAsync("Monitoring streams", "https://www.twitch.tv/directory/following/live", StreamType.Twitch);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error setting game: {ex.Message}");
+            }
             Console.WriteLine("Connected");
         });
 
@@ -113,126 +120,133 @@ namespace Streams
             if (dUser?.GetPermissions(channel).ManageChannel == true && arg.Content.Length > 0 && arg.Content[0] == '=')
             {
                 string[] words = arg.Content.Split(' ');
-                switch (words[0].Substring(1))
+                try
                 {
-                    case "addstream":
-                        Task deleteCommand = DeleteMessage(arg);
-                        if (words.Length >= 2)
-                        {
-                            Http.Models.Twitch.UsersByLogin users;
-                            using (channel.EnterTypingState())
+                    switch (words[0].Substring(1))
+                    {
+                        case "addstream":
+                            Task deleteCommand = DeleteMessage(arg);
+                            if (words.Length >= 2)
                             {
-                                try
+                                Http.Models.Twitch.UsersByLogin users;
+                                using (channel.EnterTypingState())
                                 {
-                                    users = await request.GetObjectAsync<Http.Models.Twitch.UsersByLogin>($"users/?limit=100&login={Uri.EscapeDataString(words[1])}");
-                                }
-                                catch (Exception ex)
-                                {
-                                    Console.WriteLine($"Error: {ex.Message}");
-                                    await DeleteMessage(await channel.SendMessageAsync("Twitch API returned an error. Please try again later."));
-                                    await deleteCommand;
-                                    break;
-                                }
+                                    try
+                                    {
+                                        users = await request.GetObjectAsync<Http.Models.Twitch.UsersByLogin>($"users/?limit=100&login={Uri.EscapeDataString(words[1])}");
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.WriteLine($"Error: {ex.Message}");
+                                        await DeleteMessage(await channel.SendMessageAsync("Twitch API returned an error. Please try again later."));
+                                        await deleteCommand;
+                                        break;
+                                    }
 
-                                List<Http.Models.Twitch.User> tUsers;
+                                    List<Http.Models.Twitch.User> tUsers;
+                                    try
+                                    {
+                                        tUsers = streamChannels[channel];
+                                    }
+                                    catch (KeyNotFoundException)
+                                    {
+                                        tUsers = new List<Http.Models.Twitch.User>();
+                                        streamChannels[channel] = tUsers;
+                                    }
+
+                                    foreach (var tUser in users.Users)
+                                    {
+                                        lock (tUsers)
+                                        {
+                                            if (!tUsers.Contains(tUser))
+                                            {
+                                                tUsers.Add(tUser);
+                                            }
+                                        }
+                                    }
+                                    SaveChannelData(channel.Id, tUsers);
+
+                                    int trackedChannels = tUsers.Count;
+                                    if (trackedChannels > 100)
+                                    {
+                                        await channel.SendMessageAsync($":warning: You have enabled tracking for {trackedChannels}. Behavior has not been tested when over a 100 tracked channels are live at once. Consider creating another channel to track the additional streams.");
+                                    }
+                                }
+                                await DeleteMessage(await channel.SendMessageAsync($"Added tracking for {users.Users.Length} channels: " + string.Join(", ", (users.Users.Select(tUser => tUser.DisplayName)))));
+                            }
+                            else
+                            {
+                                await DeleteMessage(await channel.SendMessageAsync("Usage: =addstream [username]"));
+                            }
+                            await deleteCommand;
+                            break;
+                        case "liststreams":
+                        case "list":
+                            try
+                            {
+                                List<Http.Models.Twitch.User> tUsers = streamChannels[channel];
+                                await channel.SendMessageAsync($"Tracked channels:\n- " + string.Join("\n- ", tUsers.Select(u => $"{u.DisplayName} ({u.Name}) - {u.Id}")));
+                            }
+                            catch (KeyNotFoundException)
+                            {
+                                await channel.SendMessageAsync("Tracking no streams for this channel.");
+                            }
+                            break;
+                        case "delstream":
+                            deleteCommand = DeleteMessage(arg);
+                            if (words.Length >= 2)
+                            {
+                                List<Http.Models.Twitch.User> tUsers = null;
                                 try
                                 {
                                     tUsers = streamChannels[channel];
                                 }
-                                catch (KeyNotFoundException)
-                                {
-                                    tUsers = new List<Http.Models.Twitch.User>();
-                                    streamChannels[channel] = tUsers;
-                                }
+                                catch (KeyNotFoundException) { /* key not found, tUsers stays null and is ignored */ }
 
-                                foreach (var tUser in users.Users)
+                                if (tUsers != null)
                                 {
-                                    lock (tUsers)
+                                    string[] ids = words[1].Split(',');
+                                    foreach (string id in ids)
                                     {
-                                        if (!tUsers.Contains(tUser))
+                                        DeleteStoredMessage($"{channel.Id}:{id}");
+
+                                        lock (tUsers)
                                         {
-                                            tUsers.Add(tUser);
+                                            tUsers.Remove(tUsers.Where(u => u.Id == id).First());
                                         }
                                     }
+                                    SaveChannelData(channel.Id, tUsers);
                                 }
-                                SaveChannelData(channel.Id, tUsers);
 
-                                int trackedChannels = tUsers.Count;
-                                if (trackedChannels > 100)
+                                await DeleteMessage(await channel.SendMessageAsync("Removed the requested channel IDs from tracking."));
+                            }
+                            await deleteCommand;
+                            break;
+                        case "bot":
+                        case "status":
+                            EmbedBuilder eb = new EmbedBuilder()
+                            {
+                                Author = new EmbedAuthorBuilder()
                                 {
-                                    await channel.SendMessageAsync($":warning: You have enabled tracking for {trackedChannels}. Behavior has not been tested when over a 100 tracked channels are live at once. Consider creating another channel to track the additional streams.");
-                                }
+                                    IconUrl = "https://i.3v.fi/raw/3logo.png",
+                                    Name = "3v",
+                                    Url = "https://3v.fi/l/streams"
+                                },
+                                Title = "Bot Status"
                             }
-                            await DeleteMessage(await channel.SendMessageAsync($"Added tracking for {users.Users.Length} channels: " + string.Join(", ", (users.Users.Select(tUser => tUser.DisplayName)))));
-                        }
-                        else
-                        {
-                            await DeleteMessage(await channel.SendMessageAsync("Usage: =addstream [username]"));
-                        }
-                        await deleteCommand;
-                        break;
-                    case "liststreams":
-                    case "list":
-                        try
-                        {
-                            List<Http.Models.Twitch.User> tUsers = streamChannels[channel];
-                            await channel.SendMessageAsync($"Tracked channels:\n- " + string.Join("\n- ", tUsers.Select(u => $"{u.DisplayName} ({u.Name}) - {u.Id}")));
-                        }
-                        catch (KeyNotFoundException)
-                        {
-                            await channel.SendMessageAsync("Tracking no streams for this channel.");
-                        }
-                        break;
-                    case "delstream":
-                        deleteCommand = DeleteMessage(arg);
-                        if (words.Length >= 2)
-                        {
-                            List<Http.Models.Twitch.User> tUsers = null;
-                            try
-                            {
-                                tUsers = streamChannels[channel];
-                            }
-                            catch (KeyNotFoundException) { /* key not found, tUsers stays null and is ignored */ }
-
-                            if (tUsers != null)
-                            {
-                                string[] ids = words[1].Split(',');
-                                foreach (string id in ids)
-                                {
-                                    DeleteStoredMessage($"{channel.Id}:{id}");
-
-                                    lock (tUsers)
-                                    {
-                                        tUsers.Remove(tUsers.Where(u => u.Id == id).First());
-                                    }
-                                }
-                                SaveChannelData(channel.Id, tUsers);
-                            }
-
-                            await DeleteMessage(await channel.SendMessageAsync("Removed the requested channel IDs from tracking."));
-                        }
-                        await deleteCommand;
-                        break;
-                    case "bot":
-                    case "status":
-                        EmbedBuilder eb = new EmbedBuilder()
-                        {
-                            Author = new EmbedAuthorBuilder()
-                            {
-                                IconUrl = "https://i.3v.fi/raw/3logo.png",
-                                Name = "3v",
-                                Url = "https://3v.fi/l/streams"
-                            },
-                            Title = "Bot Status"
-                        }
-                        .AddInlineField("RAM Usage (GC)", $"{(Math.Ceiling(GC.GetTotalMemory(true) / 1024.0))} KB")
-                        .AddInlineField("Uptime", (DateTime.UtcNow - startTime).ToString(@"d\ \d\a\y\s\,\ h\ \h\o\u\r\s"))
-                        .AddInlineField("Guilds", client.Guilds.Count)
-                        .AddInlineField("Users", GetUserCount())
-                        .AddInlineField("Streams Tracked", GetTrackedStreamCount())
-                        .AddInlineField("Streams Live", storedMessages.Count);
-                        await channel.SendMessageAsync("", embed: eb.Build());
-                        break;
+                            .AddInlineField("RAM Usage (GC)", $"{(Math.Ceiling(GC.GetTotalMemory(true) / 1024.0))} KB")
+                            .AddInlineField("Uptime", (DateTime.UtcNow - startTime).ToString(@"d\ \d\a\y\s\,\ h\ \h\o\u\r\s"))
+                            .AddInlineField("Guilds", client.Guilds.Count)
+                            .AddInlineField("Users", GetUserCount())
+                            .AddInlineField("Streams Tracked", GetTrackedStreamCount())
+                            .AddInlineField("Streams Live", storedMessages.Count);
+                            await channel.SendMessageAsync("", embed: eb.Build());
+                            break;
+                    }
+                }
+                catch (Exception ex) when (ex is Discord.Net.HttpException || ex is Discord.Net.RateLimitedException || ex is Discord.Net.WebSocketClosedException)
+                {
+                    // don't crash on library internal errors
                 }
             }
         });
@@ -264,7 +278,14 @@ namespace Streams
 
 #pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
 
-                message.DeleteAsync(reqOpt);
+                try
+                {
+                    message.DeleteAsync(reqOpt);
+                }
+                catch (Exception ex) when (ex is Discord.Net.HttpException || ex is Discord.Net.RateLimitedException || ex is Discord.Net.WebSocketClosedException)
+                {
+                    // don't crash on library internal errors
+                }
 
 #pragma warning restore CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
 
@@ -329,19 +350,26 @@ namespace Streams
                         }
                         else
                         {
-                            var stream = streams.StreamList.Where(s => s.Channel.Id == tUser.Id).First();
-                            if (storedMessages.TryGetValue(storedMessageKey, out IUserMessage message))
+                            try
                             {
-                                // Message exists, edit it
-                                await message.ModifyAsync(properties =>
+                                var stream = streams.StreamList.Where(s => s.Channel.Id == tUser.Id).First();
+                                if (storedMessages.TryGetValue(storedMessageKey, out IUserMessage message))
                                 {
-                                    properties.Embed = GetEmbedObject(stream);
-                                }, reqOpt);
+                                    // Message exists, edit it
+                                    await message.ModifyAsync(properties =>
+                                    {
+                                        properties.Embed = GetEmbedObject(stream);
+                                    }, reqOpt);
+                                }
+                                else
+                                {
+                                    // Message doesn't exist, create it
+                                    storedMessages[storedMessageKey] = await tUsers.Key.SendMessageAsync("", embed: GetEmbedObject(stream), options: reqOpt);
+                                }
                             }
-                            else
+                            catch (Exception ex) when (ex is Discord.Net.HttpException || ex is Discord.Net.RateLimitedException || ex is Discord.Net.WebSocketClosedException)
                             {
-                                // Message doesn't exist, create it
-                                storedMessages[storedMessageKey] = await tUsers.Key.SendMessageAsync("", embed: GetEmbedObject(stream), options: reqOpt);
+                                // don't crash on library internal errors
                             }
                         }
                     }
