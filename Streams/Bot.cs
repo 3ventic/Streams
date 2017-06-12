@@ -323,8 +323,10 @@ namespace Streams
 
         private async void UpdateStreams(object state)
         {
+            Console.WriteLine("Running UpdateStreams");
             foreach (var tUsers in streamChannels)
             {
+                Console.WriteLine($"Checking updates for channel {tUsers.Key.Name} in {tUsers.Key.Guild.Name}");
                 using (tUsers.Key.EnterTypingState())
                 {
                     string idlist = string.Join(",", tUsers.Value.Select(tUser => tUser.Id));
@@ -355,6 +357,7 @@ namespace Streams
                                 var stream = streams.StreamList.Where(s => s.Channel.Id == tUser.Id).First();
                                 if (storedMessages.TryGetValue(storedMessageKey, out IUserMessage message))
                                 {
+                                    Console.WriteLine($"Editing {storedMessageKey} on {tUsers.Key.Id}, {tUsers.Key.Name} in {tUsers.Key.Guild.Name}");
                                     // Message exists, edit it
                                     await message.ModifyAsync(properties =>
                                     {
