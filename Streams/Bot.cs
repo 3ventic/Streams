@@ -27,7 +27,7 @@ namespace Streams
         private Http.Requester request = new Http.Requester(new Uri("https://api.twitch.tv/v5/"));
         private CancellationTokenSource stopswitch = new CancellationTokenSource();
         private Timer streamlooker;
-        private ConcurrentDictionary<SocketTextChannel, List<Http.Models.Twitch.User>> streamChannels = new ConcurrentDictionary<SocketTextChannel, List<Http.Models.Twitch.User>>();
+        private ConcurrentDictionary<ulong, (SocketTextChannel Channel, List<Http.Models.Twitch.User> UserList)> streamChannels = new ConcurrentDictionary<ulong, (SocketTextChannel, List<Http.Models.Twitch.User>)>();
         private ConcurrentDictionary<string, IUserMessage> storedMessages = new ConcurrentDictionary<string, IUserMessage>();
 
         public Bot()
@@ -64,7 +64,7 @@ namespace Streams
                 string channelPath = $"data/{channel.Id}.dat";
                 if (File.Exists(channelPath))
                 {
-                    streamChannels[channel] = JsonConvert.DeserializeObject<List<Http.Models.Twitch.User>>(File.ReadAllText(channelPath));
+                    streamChannels[channel.Id] = (channel, JsonConvert.DeserializeObject<List<Http.Models.Twitch.User>>(File.ReadAllText(channelPath)));
                 }
             }
         });
@@ -143,30 +143,30 @@ namespace Streams
                                         break;
                                     }
 
-                                    List<Http.Models.Twitch.User> tUsers;
+                                    (SocketTextChannel, List<Http.Models.Twitch.User> UserList) tUsers;
                                     try
                                     {
-                                        tUsers = streamChannels[channel];
+                                        tUsers = streamChannels[channel.Id];
                                     }
                                     catch (KeyNotFoundException)
                                     {
-                                        tUsers = new List<Http.Models.Twitch.User>();
-                                        streamChannels[channel] = tUsers;
+                                        tUsers = (channel, new List<Http.Models.Twitch.User>());
+                                        streamChannels[channel.Id] = tUsers;
                                     }
 
                                     foreach (var tUser in users.Users)
                                     {
-                                        lock (tUsers)
+                                        lock (tUsers.UserList)
                                         {
-                                            if (!tUsers.Contains(tUser))
+                                            if (!tUsers.UserList.Contains(tUser))
                                             {
-                                                tUsers.Add(tUser);
+                                                tUsers.UserList.Add(tUser);
                                             }
                                         }
                                     }
-                                    SaveChannelData(channel.Id, tUsers);
+                                    SaveChannelData(channel.Id, tUsers.UserList);
 
-                                    int trackedChannels = tUsers.Count;
+                                    int trackedChannels = tUsers.UserList.Count;
                                     if (trackedChannels > 100)
                                     {
                                         await channel.SendMessageAsync($":warning: You have enabled tracking for {trackedChannels}. Behavior has not been tested when over a 100 tracked channels are live at once. Consider creating another channel to track the additional streams.");
@@ -184,7 +184,7 @@ namespace Streams
                         case "list":
                             try
                             {
-                                List<Http.Models.Twitch.User> tUsers = streamChannels[channel];
+                                List<Http.Models.Twitch.User> tUsers = streamChannels[channel.Id].UserList;
                                 await channel.SendMessageAsync($"Tracked channels:\n- " + string.Join("\n- ", tUsers.Select(u => $"{u.DisplayName} ({u.Name}) - {u.Id}")));
                             }
                             catch (KeyNotFoundException)
@@ -199,7 +199,7 @@ namespace Streams
                                 List<Http.Models.Twitch.User> tUsers = null;
                                 try
                                 {
-                                    tUsers = streamChannels[channel];
+                                    tUsers = streamChannels[channel.Id].UserList;
                                 }
                                 catch (KeyNotFoundException) { /* key not found, tUsers stays null and is ignored */ }
 
@@ -256,7 +256,7 @@ namespace Streams
             int streams = 0;
             foreach (var tUsers in streamChannels.Values)
             {
-                streams += tUsers.Count;
+                streams += tUsers.UserList.Count;
             }
             return streams;
         }
@@ -324,12 +324,12 @@ namespace Streams
         private async void UpdateStreams(object state)
         {
             Console.WriteLine("Running UpdateStreams");
-            foreach (var tUsers in streamChannels)
+            foreach (var tUsers in streamChannels.Values)
             {
-                Console.WriteLine($"Checking updates for channel {tUsers.Key.Name} in {tUsers.Key.Guild.Name}");
-                using (tUsers.Key.EnterTypingState())
+                Console.WriteLine($"Checking updates for channel {tUsers.Channel.Name} in {tUsers.Channel.Guild.Name}");
+                using (tUsers.Channel.EnterTypingState())
                 {
-                    string idlist = string.Join(",", tUsers.Value.Select(tUser => tUser.Id));
+                    string idlist = string.Join(",", tUsers.UserList.Select(tUser => tUser.Id));
                     Http.Models.Twitch.Streams streams;
                     try
                     {
@@ -342,9 +342,9 @@ namespace Streams
                     }
 
                     IEnumerable<string> foundIds = streams.StreamList.Select(stream => stream.Channel.Id);
-                    foreach (var tUser in tUsers.Value)
+                    foreach (var tUser in tUsers.UserList)
                     {
-                        string storedMessageKey = $"{tUsers.Key.Id}:{tUser.Id}";
+                        string storedMessageKey = $"{tUsers.Channel.Id}:{tUser.Id}";
                         if (!foundIds.Contains(tUser.Id))
                         {
                             // Offline, remove if message exists, else nothing to do
@@ -357,7 +357,7 @@ namespace Streams
                                 var stream = streams.StreamList.Where(s => s.Channel.Id == tUser.Id).First();
                                 if (storedMessages.TryGetValue(storedMessageKey, out IUserMessage message))
                                 {
-                                    Console.WriteLine($"Editing {storedMessageKey} on {tUsers.Key.Id}, {tUsers.Key.Name} in {tUsers.Key.Guild.Name}");
+                                    Console.WriteLine($"Editing {storedMessageKey} on {tUsers.Channel.Id}, {tUsers.Channel.Name} in {tUsers.Channel.Guild.Name}");
                                     // Message exists, edit it
                                     await message.ModifyAsync(properties =>
                                     {
@@ -367,7 +367,7 @@ namespace Streams
                                 else
                                 {
                                     // Message doesn't exist, create it
-                                    storedMessages[storedMessageKey] = await tUsers.Key.SendMessageAsync("", embed: GetEmbedObject(stream), options: reqOpt);
+                                    storedMessages[storedMessageKey] = await tUsers.Channel.SendMessageAsync("", embed: GetEmbedObject(stream), options: reqOpt);
                                 }
                             }
                             catch (Exception ex) when (ex is Discord.Net.HttpException || ex is Discord.Net.RateLimitedException || ex is Discord.Net.WebSocketClosedException)
