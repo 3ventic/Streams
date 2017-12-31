@@ -15,5 +15,5 @@ A Discord bot to provide stream status and updates from multiple Twitch channels
 You require "Manage Channel" permission on the channel to use these commands.
 
 - `=addstream [comma-separated-list of Twitch channel names]` to enable tracking of channels. Example: `=addstream lirik,3v`
-- `=list` to list tracked channels with their IDs
-- `=delstream [comma-separated-list of Twitch channel IDs]` to disable tracking of channels. Example: `=delstream 23161357,17089325`
+- `=liststreams` to list tracked channels with their IDs
+- `=delstream [comma-separated-list of Twitch channel IDs]` to disable tracking of channels. Example: `=del 23161357,17089325`
