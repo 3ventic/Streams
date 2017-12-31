@@ -40,6 +40,7 @@ namespace Streams
             client.Connected += Client_Connected;
             client.MessageReceived += Client_MessageReceived;
             client.GuildAvailable += Client_GuildAvailable;
+            client.Disconnected += Client_Disconnected;
             client.Log += msg => Task.Run(() => Console.WriteLine($"Discord.Net log: {msg}"));
 
             Console.WriteLine($"Connecting using token \"{token}\"");
@@ -54,6 +55,13 @@ namespace Streams
                 await Task.Delay(-1, stopswitch.Token);
             }
             catch (TaskCanceledException) { /* expected when closing down program via ^C */ }
+        }
+
+        private async Task Client_Disconnected(Exception arg)
+        {
+            await Cleanup();
+            Console.WriteLine($"Disconnected due to {arg}");
+            Environment.Exit(2);
         }
 
         private Task Client_GuildAvailable(SocketGuild arg) => Task.Run(() =>
@@ -81,21 +89,26 @@ namespace Streams
 
         public async Task Stop()
         {
-            Console.WriteLine("Cleaning up...");
-
-            // Clean and logout
-            streamlooker.Dispose();
-
-            foreach (var message in storedMessages.Values)
-            {
-                await message.DeleteAsync();
-            }
+            await Cleanup();
 
             Console.WriteLine("Logging out...");
             await client.LogoutAsync();
             await client.StopAsync();
             Console.WriteLine("Exited");
             stopswitch.Cancel();
+        }
+
+        private async Task Cleanup()
+        {
+            Console.WriteLine("Cleaning up...");
+
+            // Clean and logout
+            streamlooker.Dispose();
+
+            foreach (IUserMessage message in storedMessages.Values)
+            {
+                await message.DeleteAsync();
+            }
         }
 
         private Task Client_Connected() => Task.Run(async () =>
